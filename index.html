@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HW1 — Private Key → Public Key (ECDLP)</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d1d1b;--mut:#6b6b66;--card:#fff;--bd:#dcdcd4;--ac:#0b6b5c;--ac2:#e7f3f0;--hot:#c8462f;--cold:#2a6fc4;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161816;--fg:#ecece6;--mut:#9a9a92;--card:#1f221f;--bd:#34382f;--ac:#5fd0b8;--ac2:#1e2f2b;--hot:#ff7a5c;--cold:#6fa8ff}}
+:root[data-theme="dark"]{--bg:#161816;--fg:#ecece6;--mut:#9a9a92;--card:#1f221f;--bd:#34382f;--ac:#5fd0b8;--ac2:#1e2f2b;--hot:#ff7a5c;--cold:#6fa8ff}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 Georgia,'Times New Roman',serif}
+main{max-width:960px;margin:0 auto;padding:20px 16px 56px}
+h1{font-size:1.7rem;margin:.2em 0}h2{font-size:1.25rem;margin:32px 0 10px;border-bottom:2px solid var(--ac);padding-bottom:4px}h3{font-size:1rem;margin:0 0 6px;color:var(--ac)}
+.sub,.note{color:var(--mut)}.note{font-size:.88rem}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.m,code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88rem}
+.eq{text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;background:var(--ac2);border-radius:8px;padding:10px;margin:10px 0;overflow-x:auto}
+.sc{overflow-x:auto}svg{max-width:100%;height:auto;display:block;margin:auto}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{border-bottom:1px solid var(--bd);padding:6px 8px;text-align:left;vertical-align:top}th{color:var(--mut)}
+input[type=number],select{padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+input[type=number]{width:90px}
+button{padding:7px 14px;border:1px solid var(--ac);border-radius:6px;background:var(--ac);color:var(--bg);font:inherit;cursor:pointer}
+button.alt{background:var(--ac2);color:var(--ac)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:12px}
+label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mut);gap:3px}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.kpi div{background:var(--ac2);border-radius:8px;padding:8px 12px}.kpi b{display:block;font-size:1.15rem;color:var(--ac);font-family:ui-monospace,monospace}
+.t{fill:var(--mut);font:9px ui-monospace,monospace}.tf{fill:var(--fg);font:9px ui-monospace,monospace}
+li{margin-bottom:6px}
+</style></head><body><main>
+<h1>Homework 1: Private Key → Public Key (ECDLP)</h1>
+<p class="sub">Scalar multiplication over the toy elliptic curve y² ≡ x³ + 7 (mod 17), discrete lattice visualization, and a statistical look at the one-way behaviour of kG.</p>
+
+<h2>1. Mathematical Model &amp; Ethereum Curves</h2>
+<div class="card">
+<p>In Ethereum, a public key is derived from a private key <b>k</b> by elliptic-curve scalar multiplication on the standard curve <b>secp256k1</b>:</p>
+<div class="eq">Q = k·G = G + G + … + G (k times)</div>
+<p>The forward map k → Q is fast thanks to the double-and-add algorithm (about log₂k doublings and additions). Recovering k from Q and G is the <b>Elliptic Curve Discrete Logarithm Problem (ECDLP)</b>, infeasible for a 256-bit prime field.</p>
+<p>For exploration we use a toy curve with the same Weierstrass coefficients as secp256k1 (a = 0, b = 7) over the small field F₁₇:</p>
+<div class="eq">E(F₁₇): y² ≡ x³ + 7 (mod 17), assignment base point G = (1, 5)</div>
+<p class="note">#E(F₁₇) = 18 points (17 affine points plus the point at infinity O). The order of G depends on the chosen point (see section 2).</p></div>
+
+<h2>2. Interactive Public Key Generator</h2>
+<div class="card">
+<div class="row">
+<label>Private key k<input type="number" id="k" value="7" min="0" max="500"></label>
+<label>Base point G<select id="g"></select></label>
+<button id="comp">Compute step-by-step</button></div>
+<div class="kpi"><div>Private key k<b id="kk"></b></div><div>Base point G<b id="gg"></b></div><div>Order of G<b id="oo"></b></div><div>Public key Q = kG<b id="qq"></b></div></div>
+<div class="sc" id="steps"></div>
+<p class="note" id="steps-n"></p></div>
+
+<h2>3. Discrete Lattice Representation over F₁₇ × F₁₇</h2>
+<div class="card">
+<p>All affine points satisfying y² ≡ x³ + 7 (mod 17) are drawn on the finite grid. The dashed path shows the non-linear “leaps” between successive multiples G, 2G, 3G, …</p>
+<div class="row"><button id="play">▶ Play path animation</button>
+<label>Speed<select id="spd"><option value="900">Slow</option><option value="200">Fast</option></select></label>
+<span class="m" id="anim-s"></span></div>
+<svg id="lat" viewBox="0 0 330 330" style="max-width:460px"></svg></div>
+
+<h2>4. Statistical Exploration of the Multiples Subgroup</h2>
+<p class="sub" id="st-intro"></p>
+<div class="card"><h3>Statistical findings &amp; properties</h3><ol id="find"></ol></div>
+
+<h2>5. Critical Discussion: Scalar Multiplication vs Cryptographic Hash Functions</h2>
+<div class="card">
+<p>Both k ↦ kG and a hash such as SHA-256 or Keccak-256 are used as <b>one-way functions</b>, but they are built for different jobs. Scalar multiplication is a one-way <em>structure-preserving</em> map, which is what makes public-key cryptography possible. A hash is a one-way <em>structure-destroying</em> map, which is what makes it good for integrity and commitments.</p>
+<div class="sc"><table>
+<tr><th>Property</th><th>EC scalar multiplication (k ↦ kG)</th><th>Cryptographic hash (Hash(m))</th></tr>
+<tr><td><b>Injectivity vs. Compression</b></td><td>Injective on the subgroup: distinct k mod n give distinct points, so no entropy is lost. Compression appears only if one keeps x alone (kG and −kG share x).</td><td>Compressing by design: arbitrary-length input to a fixed digest, so collisions exist (pigeonhole) but are infeasible to find.</td></tr>
+<tr><td><b>Strict Avalanche Criterion</b></td><td>Not satisfied. Coordinates jump non-linearly, yet Q<sub>k+1</sub> = Q<sub>k</sub> + G, so successive outputs are algebraically linked.</td><td>Satisfied in practice: flipping one input bit flips about 50% of the output bits, with no residual correlation.</td></tr>
+<tr><td><b>Algebraic Homomorphism</b></td><td>Preserved: (k₁+k₂)G = k₁G + k₂G. Essential for Diffie–Hellman and ECDSA.</td><td>Destroyed: Hash(m₁+m₂) is unrelated to Hash(m₁), Hash(m₂). Any linearity would be a security flaw.</td></tr>
+<tr><td><b>One-Wayness (preimage resistance)</b></td><td>Rests on the hardness of the ECDLP. Generic attacks (baby-step giant-step, Pollard ρ) cost about √n, so a 256-bit curve gives roughly 128-bit security. Trivial for the toy field.</td><td>No algebraic shortcut known; generic preimage search costs about 2<sup>m</sup> for an m-bit digest (256 bits for SHA-256).</td></tr>
+<tr><td><b>Uniform bitstring indistinguishability</b></td><td>Not satisfied: encoded points are not uniform strings (only some x values occur, and (x, y) must satisfy the curve equation). Protocols hash or re-encode points before using them as random bits.</td><td>Designed so that digests look uniformly random to any efficient observer (modelled as a random oracle).</td></tr>
+<tr><td><b>Core purpose</b></td><td>Asymmetric key pairs, key exchange, digital signatures.</td><td>Data integrity, commitments, proof of work, content addressing.</td></tr></table></div>
+<p class="note">Takeaway: the statistics in section 4 show a pseudo-random-looking walk, but it is generated by a simple group law; a hash deliberately hides any such structure.</p></div>
+
+<script>
+const $=id=>document.getElementById(id),p=17;
+const mod=n=>((n%p)+p)%p;
+const inv=x=>{x=mod(x);let r=1,e=p-2,b=x;while(e>0){if(e&1)r=r*b%p;b=b*b%p;e>>=1}return r};
+const fmt=P=>P?`(${P[0]}, ${P[1]})`:'O';
+function add(P,Q){if(!P)return{R:Q,l:null};if(!Q)return{R:P,l:null};
+ if(P[0]===Q[0]&&mod(P[1]+Q[1])===0)return{R:null,l:null};
+ const l=(P[0]===Q[0]&&P[1]===Q[1])?mod(3*P[0]*P[0]*inv(2*P[1])):mod((Q[1]-P[1])*inv(Q[0]-P[0]));
+ const x=mod(l*l-P[0]-Q[0]);return{R:[x,mod(l*(P[0]-x)-P[1])],l}}
+const pts=[];for(let x=0;x<p;x++)for(let y=0;y<p;y++)if(mod(y*y)===mod(x**3+7))pts.push([x,y]);
+const presets=[[[6,6],'Maximum Order'],[[15,4],'Maximum Order'],[[10,2],'Maximum Order'],[[1,5],'Assignment Base Point'],[[8,3],'Intermediate Order'],[[5,9],'Short Cycle']];
+let S={G:null,M:[],n:0},timer=null;
+function setG(G){S.G=G;S.M=[null];let R=null;S.n=0;for(let i=1;i<80;i++){R=add(R,G).R;S.M.push(R);if(!R){S.n=i;break}}}
+const orderOf=G=>{setG(G);return S.n};
+$('g').innerHTML=presets.map((q,i)=>`<option value="${i}">G = ${fmt(q[0])} — ${q[1]} (order ${orderOf(q[0])})</option>`).join('');
+$('g').value=3;
+
+// plots
+const X=x=>26+x*17,Y=y=>296-y*17;
+function lattice(id,opt){let s='';
+ for(let i=0;i<p;i++){s+=`<line x1="${X(i)}" y1="${Y(0)}" x2="${X(i)}" y2="${Y(16)}" stroke="var(--bd)" stroke-width=".5"/><line x1="${X(0)}" y1="${Y(i)}" x2="${X(16)}" y2="${Y(i)}" stroke="var(--bd)" stroke-width=".5"/>`;
+  if(i%4===0)s+=`<text class="t" x="${X(i)-3}" y="314">${i}</text><text class="t" x="6" y="${Y(i)+3}">${i}</text>`}
+ pts.forEach(P=>s+=`<circle cx="${X(P[0])}" cy="${Y(P[1])}" r="${opt.big?3:3.5}" fill="var(--mut)" opacity=".55"/>`);
+ if(opt.upto){const seq=S.M.slice(1,opt.upto+1).filter(Boolean);
+  s+=`<polyline fill="none" stroke="var(--ac)" stroke-width="1.2" stroke-dasharray="4 3" points="${seq.map(P=>X(P[0])+','+Y(P[1])).join(' ')}"/>`;
+  seq.forEach((P,i)=>{const last=i===seq.length-1;s+=`<circle cx="${X(P[0])}" cy="${Y(P[1])}" r="${last?9:6.5}" fill="${last?'var(--hot)':'var(--ac)'}"/><text x="${X(P[0])}" y="${Y(P[1])+3}" text-anchor="middle" style="fill:#fff;font:8px ui-monospace,monospace">${i+1}</text>`})}
+ $(id).innerHTML=s}
+function realCurve(){const XR=x=>40+(x+2)*45,YR=y=>130-y*13;let up=[],dn=[];
+ for(let x=-Math.cbrt(7);x<=4;x+=.02){const y=Math.sqrt(Math.max(0,x**3+7));up.push(XR(x)+','+YR(y));dn.push(XR(x)+','+YR(-y))}
+ $('real').innerHTML=`<line x1="10" y1="130" x2="320" y2="130" stroke="var(--mut)"/><line x1="${XR(0)}" y1="8" x2="${XR(0)}" y2="252" stroke="var(--mut)"/><polyline fill="none" stroke="var(--ac)" stroke-width="2" points="${up.reverse().concat(dn.reverse().reverse()).join(' ')}"/>`}
+function bars(id,vals,labels,ideal,col='var(--ac)'){const w=340,mx=Math.max(1,...vals,ideal||0),bw=(w-20)/vals.length;
+ let s=ideal?`<line x1="10" x2="${w-10}" y1="${120-ideal/mx*100}" y2="${120-ideal/mx*100}" stroke="var(--hot)" stroke-dasharray="4 3"/>`:'';
+ vals.forEach((v,i)=>{const h=v/mx*100;s+=`<rect x="${10+i*bw+2}" y="${120-h}" width="${bw-4}" height="${h}" fill="${col}"/><text class="t" x="${10+i*bw+bw/2}" y="134" text-anchor="middle">${labels[i]}</text><text class="tf" x="${10+i*bw+bw/2}" y="${116-h}" text-anchor="middle">${+v.toFixed(1)}</text>`});
+ $(id).innerHTML=s}
+function stats(){const n=S.n,A=S.M.slice(1,n);if(A.length<2){$('find').innerHTML='<li>The subgroup is too small for statistics.</li>';return}
+ $('st-intro').textContent=`Empirical evaluation of the scalar multiples kG for k = 1, …, ${n-1} (affine points; ${n}G = O). Base point G = ${fmt(S.G)}, order ${n}.`;
+ const xs=A.map(P=>P[0]),ys=A.map(P=>P[1]),cnt=Array(p).fill(0);xs.forEach(x=>cnt[x]++);
+ const par=[xs.filter(v=>v%2===0).length,xs.filter(v=>v%2).length,ys.filter(v=>v%2===0).length,ys.filter(v=>v%2).length];
+ const mx=A.length,ks=A.map((_,i)=>i+1),mean=a=>a.reduce((u,v)=>u+v)/a.length,mk=mean(ks),mxv=mean(xs);
+ const cov=ks.reduce((s,k,i)=>s+(k-mk)*(xs[i]-mxv),0),vk=ks.reduce((s,k)=>s+(k-mk)**2,0),vx=xs.reduce((s,x)=>s+(x-mxv)**2,0),r=vx?cov/Math.sqrt(vk*vx):NaN;
+ let sc='<line x1="30" y1="140" x2="330" y2="140" stroke="var(--mut)"/><line x1="30" y1="10" x2="30" y2="140" stroke="var(--mut)"/>';
+ A.forEach((P,i)=>sc+=`<circle cx="${30+(i+.5)/mx*300}" cy="${140-P[0]/16*125}" r="3.5" fill="var(--ac)"/>`);
+ sc+=`<text class="t" x="165" y="162">k</text><text class="t" x="4" y="14">x</text><text class="t" x="12" y="143">0</text><text class="t" x="8" y="22">16</text>`;
+ const jumps=[];for(let i=0;i<A.length-1;i++){const d=Math.abs(xs[i+1]-xs[i]);jumps.push(Math.min(d,p-d))}
+ const absent=[...Array(p).keys()].filter(x=>!cnt[x]),mj=mean(jumps);
+ $('find').innerHTML=[
+ `<b>Coordinate frequencies &amp; quadratic residues.</b> Only ${p-absent.length} of the 17 field elements occur as x (missing: ${absent.join(', ')||'none'}). For each x, z = x³+7 mod 17 is a quadratic residue (two solutions ±y), zero (one solution) or a non-residue (none), so x is not uniform over F₁₇.`,
+ `<b>Bit parity (LSB).</b> x: ${par[0]} even / ${par[1]} odd; y: ${par[2]} even / ${par[3]} odd. ${Math.abs(par[0]-par[1])<=2&&Math.abs(par[2]-par[3])<=2?'Parity is roughly balanced, with no systematic bias.':'With so few points the split can be uneven; parity has no reliable bias either way.'}`,
+ `<b>Apparent uniformity vs. group law.</b> The points look scattered, yet they are strictly constrained by the group law of E(F₁₇), which is cyclic here with ${n} elements.`,
+ `<b>Input–output correlation (k ↦ x(kG)).</b> The Pearson coefficient is r = ${isNaN(r)?'n/a':r.toFixed(3)}; there is no monotonic or linear trend that would help recover k from x.`,
+ `<b>Hopping when k → k+1.</b> The average circular jump in x is ${mj.toFixed(2)} (about 4.24 for independent uniform values), yet this is algebraic hopping, Q<sub>k+1</sub> = Q<sub>k</sub> + G, and not a bit-level avalanche.`].map(t=>`<li>${t}</li>`).join('')}
+
+// generator
+function compute(){const k=Math.max(0,Math.floor(+$('k').value)||0),G=presets[+$('g').value][0];setG(G);
+ let Q=null,rows=[];
+ if(k>0){const b=k.toString(2);let R=G,i=0;rows.push([i++,'R ← G (leading bit 1)','—',R]);
+  for(let j=1;j<b.length;j++){let d=add(R,R);R=d.R;rows.push([i++,`R ← 2R (bit ${b[j]})`,d.l,R]);
+   if(b[j]==='1'){const a=add(R,G);R=a.R;rows.push([i++,'R ← R + G',a.l,R])}}Q=R}
+ $('kk').textContent=k;$('gg').textContent=fmt(G);$('oo').textContent=S.n;$('qq').textContent=fmt(Q);
+ $('steps').innerHTML=`<table><tr><th>Step (i)</th><th>Operation</th><th>Slope λ (mod 17)</th><th>Resulting point (xᵢ, yᵢ)</th></tr>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td class="m">${r[2]===null?'—':r[2]}</td><td class="m">${fmt(r[3])}</td></tr>`).join('')||'<tr><td colspan="4">k = 0 gives the point at infinity O.</td></tr>'}</table>`;
+ $('steps-n').textContent=`k = ${k} is ${k?k.toString(2):'0'} in binary, so it takes ${rows.length?rows.length-1:0} group operations instead of ${k} additions. Check: ${k} mod ${S.n} = ${k%S.n}, hence Q = ${fmt(S.M[k%S.n])}.`;
+ stop();lattice('lat',{upto:S.n-1});stats()}
+function stop(){clearTimeout(timer);timer=null;$('play').textContent='▶ Play path animation';$('anim-s').textContent=''}
+function play(){if(timer){stop();return}const k=Math.max(1,Math.floor(+$('k').value)||1);let j=0;$('play').textContent='⏸ Pause';
+ (function tick(){j++;lattice('lat',{upto:j});$('anim-s').textContent=`${j}·G = ${fmt(S.M[j%S.n])}`;
+  if(j>=Math.min(k,200)){timer=null;$('play').textContent='▶ Play path animation';return}timer=setTimeout(tick,+$('spd').value)})()}
+$('comp').onclick=compute;$('g').onchange=compute;$('k').onchange=compute;$('play').onclick=play;
+compute();
+</script></main></body></html>
